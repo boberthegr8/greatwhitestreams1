@@ -2,7 +2,6 @@ package com.gwstreams.app.ui.player
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +20,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.gwstreams.app.data.repo.EpgParser
 import com.gwstreams.app.data.repo.Programme
@@ -61,13 +65,12 @@ data class PlayTarget(
             return PlayTarget(w.title, url, w.id, w.kind == "LIVE")
         }
 
-        /** Play a finished download straight from the local file. */
         fun fromLocal(title: String, localUri: String, streamId: Int): PlayTarget =
             PlayTarget(title, localUri, streamId, isLive = false)
     }
 }
 
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@UnstableApi
 @Composable
 fun PlayerScreen(
     target: PlayTarget,
@@ -79,16 +82,37 @@ fun PlayerScreen(
 
     val player = remember {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(currentUrl))
+            val dataSourceFactory = DefaultHttpDataSource.Factory()
+                .setAllowCrossProtocolRedirects(true)
+                .setUserAgent("GWStreams")
+
+            val mediaItem = MediaItem.Builder()
+                .setUri(currentUrl)
+                .apply {
+                    // Tell ExoPlayer this is an MPEG-TS stream so it picks the right extractor.
+                    if (target.isLive) setMimeType(MimeTypes.VIDEO_MP2T)
+                }
+                .build()
+
+            val source = ProgressiveMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(mediaItem)
+
+            setMediaSource(source)
             prepare()
             playWhenReady = true
         }
     }
 
-    // Swap source when catch-up is chosen, without rebuilding the player.
+    // Swap source when catch-up is chosen.
     LaunchedEffect(currentUrl) {
         if (player.currentMediaItem?.localConfiguration?.uri.toString() != currentUrl) {
-            player.setMediaItem(MediaItem.fromUri(currentUrl))
+            val dataSourceFactory = DefaultHttpDataSource.Factory()
+                .setAllowCrossProtocolRedirects(true)
+                .setUserAgent("GWStreams")
+            val mediaItem = MediaItem.Builder().setUri(currentUrl).build()
+            val source = ProgressiveMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(mediaItem)
+            player.setMediaSource(source)
             player.prepare()
             player.playWhenReady = true
         }
@@ -110,6 +134,8 @@ fun PlayerScreen(
                     PlayerView(it).apply {
                         this.player = player
                         useController = true
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        keepScreenOn = true
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -234,7 +260,6 @@ private fun EpgRow(
 private fun timeOf(sec: Long): String =
     SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(sec * 1000))
 
-/** Archive start format expected by timeshift.php: yyyy-MM-dd:HH-mm (UTC). */
 private fun archiveStart(startSec: Long): String {
     val fmt = SimpleDateFormat("yyyy-MM-dd:HH-mm", Locale.US)
     fmt.timeZone = TimeZone.getTimeZone("UTC")
