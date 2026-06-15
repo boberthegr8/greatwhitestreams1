@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -42,7 +43,7 @@ fun HomeScreen(
 ) {
     val state by vm.state.collectAsState()
 
-    // A ticking clock so live progress bars advance without re-fetching (#3).
+    // A ticking clock so live progress bars advance without re-fetching.
     var nowSec by remember { mutableStateOf(System.currentTimeMillis() / 1000) }
     LaunchedEffect(Unit) {
         while (true) { delay(30_000); nowSec = System.currentTimeMillis() / 1000 }
